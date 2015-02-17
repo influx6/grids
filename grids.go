@@ -27,8 +27,12 @@ type GridInterface interface {
 	DelOut(f string)
 	InStream(f string) evroll.Roller
 	OutStream(f string) evroll.Roller
+	MuxInStream(f string) evroll.Roller
+	MuxOutStream(f string) evroll.Roller
 	InBind(f string, c PacketChannel) evroll.Roller
 	OutBnd(f string, c PacketChannel) evroll.Roller
+	OutSend(f string)
+	InSend(f string)
 }
 
 //Grid struct is the real struct container for fbp blocks
@@ -38,6 +42,32 @@ type Grid struct {
 	OutChannels      PacketMap
 	InChannelRoller  PacketMapRoller
 	OutChannelRoller PacketMapRoller
+}
+
+func (g *Grid) InSend(id string, c interface{}) {
+	c := g.In(id)
+
+	if c == nil {
+		return
+	}
+
+	go func() {
+		c <- c
+	}()
+
+}
+
+func (g *Grid) OutSend(id string, c interface{}) {
+	c := g.Out(id)
+
+	if c == nil {
+		return
+	}
+
+	go func() {
+		c <- c
+	}()
+
 }
 
 //InBind provides a very easy means of functionally binding a channel into the callers grid in channel
@@ -82,6 +112,40 @@ func (g *Grid) OutBind(id string, c PacketChannel) *evroll.Roller {
 	})
 
 	return did
+}
+
+//MutOutStream creates an ev.Roller extension of the in-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
+func (g *Grid) MuxInStream(id String) *evroll.Roller {
+	d := g.InStream(id)
+
+	if d == null {
+		return nil
+	}
+
+	ev := evroll.NewRoller()
+	did.End(func(f interface{}, next func(i interface{})) {
+		ev.RevMunch(f)
+		next(nil)
+	})
+
+	return ev
+}
+
+//MutOutStream creates an ev.Roller extension of the out-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
+func (g *Grid) MuxOutStream(id String) *evroll.Roller {
+	d := g.OutStream(id)
+
+	if d == null {
+		return nil
+	}
+
+	ev := evroll.NewRoller()
+	did.End(func(f interface{}, next func(i interface{})) {
+		ev.RevMunch(f)
+		next(nil)
+	})
+
+	return ev
 }
 
 //InStream listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
