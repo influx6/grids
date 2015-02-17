@@ -7,6 +7,7 @@
 package grids
 
 import (
+	// "fmt"
 	"github.com/influx6/evroll"
 )
 
@@ -14,6 +15,7 @@ import (
 type Iv interface{}
 type PacketChannel chan interface{}
 type PacketMap map[string]PacketChannel
+type PacketMapRoller map[string]*evroll.Roller
 
 //GridInterface is the interface that defines the method mainly used by Grids
 type GridInterface interface {
@@ -25,18 +27,70 @@ type GridInterface interface {
 	DelOut(f string)
 	InStream(f string) evroll.Roller
 	OutStream(f string) evroll.Roller
+	InBind(f string, c PacketChannel) evroll.Roller
+	OutBnd(f string, c PacketChannel) evroll.Roller
 }
 
 //Grid struct is the real struct container for fbp blocks
 type Grid struct {
-	Id          string
-	InChannels  PacketMap
-	OutChannels PacketMap
+	Id               string
+	InChannels       PacketMap
+	OutChannels      PacketMap
+	InChannelRoller  PacketMapRoller
+	OutChannelRoller PacketMapRoller
+}
+
+//InBind provides a very easy means of functionally binding a channel into the callers grid in channel
+func (g *Grid) InBind(id string, c PacketChannel) *evroll.Roller {
+	if c == nil {
+		return nil
+	}
+
+	did := g.InStream(id)
+
+	if did == nil {
+		return nil
+	}
+
+	did.End(func(f interface{}, next func(i interface{})) {
+		go func() {
+			c <- f
+		}()
+		next(nil)
+	})
+
+	return did
+}
+
+//OutBind provides very easy means of functionally binding a channel into a out channel of a specific id in the caller Grid
+func (g *Grid) OutBind(id string, c PacketChannel) *evroll.Roller {
+	if c == nil {
+		return nil
+	}
+
+	did := g.OutStream(id)
+
+	if did == nil {
+		return nil
+	}
+
+	did.End(func(f interface{}, next func(i interface{})) {
+		go func() {
+			c <- f
+		}()
+		next(nil)
+	})
+
+	return did
 }
 
 //InStream listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
 
 func (g *Grid) InStream(id string) *evroll.Roller {
+	if r, ok := g.InChannelRoller[id]; ok {
+		return r
+	}
+
 	if c := g.In(id); c != nil {
 
 		ev := evroll.NewRoller()
@@ -47,6 +101,7 @@ func (g *Grid) InStream(id string) *evroll.Roller {
 			}
 		}()
 
+		g.InChannelRoller[id] = ev
 		return ev
 	}
 
@@ -56,6 +111,10 @@ func (g *Grid) InStream(id string) *evroll.Roller {
 //OutStream listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
 
 func (g *Grid) OutStream(id string) *evroll.Roller {
+	if r, ok := g.OutChannelRoller[id]; ok {
+		return r
+	}
+
 	if c := g.Out(id); c != nil {
 
 		ev := evroll.NewRoller()
@@ -66,6 +125,7 @@ func (g *Grid) OutStream(id string) *evroll.Roller {
 			}
 		}()
 
+		g.OutChannelRoller[id] = ev
 		return ev
 	}
 
@@ -145,101 +205,6 @@ func (g *Grid) String() string {
 
 //NewGrid - constructor method for creating new grid struct with a function passed in for modds
 func NewGrid(s string) *Grid {
-	g := &Grid{s, make(PacketMap), make(PacketMap)}
+	g := &Grid{s, make(PacketMap), make(PacketMap), make(PacketMapRoller), make(PacketMapRoller)}
 	return g
 }
-
-//GridPlug handles the binding of two channels and also handles
-//managagement of ensure go routines for channel to channel
-//connection
-// type GridPlug struct {
-// 	From     *Grid
-// 	FromChan PacketChannel
-// 	ToChan   PacketChannel
-// 	operator OperationFn
-// 	active   bool
-// }
-//
-// func (p *GridPlug) operate() {
-// 	if !p.active {
-// 		return
-// 	}
-// 	go func() {
-// 		for d := range p.FromChan {
-// 			if !p.active {
-// 				break
-// 			}
-// 			p.operator(d, p.ToChan)
-// 		}
-// 	}()
-// }
-//
-// func (p *GridPlug) connect() {
-// 	if p.active {
-// 		return
-// 	}
-// 	p.active = true
-// 	go p.operate()
-// }
-//
-// func (p *GridPlug) disconnect() {
-// 	if !p.active {
-// 		return
-// 	}
-// 	p.active = false
-// }
-//
-// //BindInFunc will bind a in channel with a func
-// func BindInFunc(p GridInterface, pi string, fn OperationFn) (*GridPlug, bool) {
-// 	if ci, _ := p.In(pi); ci != nil {
-// 		return &GridPlug{p, ci, nil, fn, false}, true
-// 	}
-// 	return nil, false
-// }
-//
-// func BindOutFunc(p *Grid, pi string, fn OperationFn) (*GridPlug, bool) {
-// 	if ci, fn := p.Out(pi); ci != nil {
-// 		return &GridPlug{p, ci, nil, fn, false}, true
-// 	}
-// 	return nil, false
-// }
-//
-// //BindInOut will bind the in channel to the out channel of two grids
-// func BindInOut(p *Grid, pi string, f *Grid, fi string) (*GridPlug, bool) {
-// 	if ci, fn := p.In(pi); ci != nil {
-// 		if di, _ := f.Out(fi); di != nil {
-// 			return &GridPlug{p, ci, di, fn, false}, true
-// 		}
-// 	}
-// 	return nil, false
-// }
-//
-// //BindOutIn will bind the out channel to the in channel of two grids
-// func BindOutIn(p *Grid, pi string, f *Grid, fi string) (*GridPlug, bool) {
-// 	if ci, fn := p.Out(pi); ci != nil {
-// 		if di, _ := f.In(fi); di != nil {
-// 			return &GridPlug{p, ci, di, fn, false}, true
-// 		}
-// 	}
-// 	return nil, false
-// }
-//
-// //BindIn will bind both in channels of two grids together
-// func BindIn(p *Grid, pi string, f *Grid, fi string) (*GridPlug, bool) {
-// 	if ci, fn := p.In(pi); ci != nil {
-// 		if di, _ := f.In(fi); di != nil {
-// 			return &GridPlug{p, ci, di, fn, false}, true
-// 		}
-// 	}
-// 	return nil, false
-// }
-//
-// //BindOut will bind both out channels of two grids together
-// func BindOut(p *Grid, pi string, f *Grid, fi string) (*GridPlug, bool) {
-// 	if ci, fn := p.Out(pi); ci != nil {
-// 		if di, _ := f.Out(fi); di != nil {
-// 			return &GridPlug{p, ci, di, fn, false}, true
-// 		}
-// 	}
-// 	return nil, false
-// }
