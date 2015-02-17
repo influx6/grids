@@ -14,8 +14,6 @@ import (
 type Iv interface{}
 type PacketChannel chan interface{}
 type PacketMap map[string]PacketChannel
-type OperationFn func(i Iv, p Iv)
-type PacketMapOperation map[string]OperationFn
 
 //GridInterface is the interface that defines the method mainly used by Grids
 type GridInterface interface {
@@ -25,52 +23,76 @@ type GridInterface interface {
 	Out(f string)
 	DelIn(f string)
 	DelOut(f string)
-	InStream(f string, f string) evroll.Roller
-	OutStream(f string, f string) evroll.Roller
+	InStream(f string) evroll.Roller
+	OutStream(f string) evroll.Roller
 }
 
 //Grid struct is the real struct container for fbp blocks
 type Grid struct {
-	Id           string
-	InChannels   PacketMap
-	OutChannels  PacketMap
-	InFnChannel  PacketMapOperation
-	OutFnChannel PacketMapOperation
+	Id          string
+	InChannels  PacketMap
+	OutChannels PacketMap
 }
 
-//Stream listens to a particular channel and collect the data sent into it and sends it into
-//a roller/middleware type of struct
+//InStream listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
 
-func (g *Grid) Stream(grp string, id string) evroll.Roller {
+func (g *Grid) InStream(id string) *evroll.Roller {
+	if c := g.In(id); c != nil {
 
-	ev := evroll.NewRoller()
+		ev := evroll.NewRoller()
 
-	return ev
+		go func() {
+			for d := range c {
+				ev.RevMunch(d)
+			}
+		}()
+
+		return ev
+	}
+
+	return nil
+}
+
+//OutStream listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
+
+func (g *Grid) OutStream(id string) *evroll.Roller {
+	if c := g.Out(id); c != nil {
+
+		ev := evroll.NewRoller()
+
+		go func() {
+			for d := range c {
+				ev.RevMunch(d)
+			}
+		}()
+
+		return ev
+	}
+
+	return nil
 }
 
 //newIn allows the addition of a new channel into the Grid in-comming channel list
-func (g *Grid) NewIn(f string, fn OperationFn) {
+func (g *Grid) NewIn(f string) {
 	if _, ok := g.InChannels[f]; ok {
 		return
 	}
 	c := make(PacketChannel)
 	g.InChannels[f] = c
-	g.InFnChannel[f] = fn
 }
 
 //newOut allows the addition of a new channel into the Grid out-going channel list
-func (g *Grid) NewOut(f string, fn OperationFn) {
+func (g *Grid) NewOut(f string) {
 	if _, ok := g.OutChannels[f]; ok {
 		return
 	}
 	c := make(PacketChannel)
 	g.OutChannels[f] = c
-	g.OutFnChannel[f] = fn
 }
 
 //delOut - deletes and runs a go closure to close the channel in the outgoing list
 func (g *Grid) DelOut(f string) bool {
-	c, _ := g.Out(f)
+	c := g.Out(f)
 
 	if c == nil {
 		return false
@@ -78,7 +100,6 @@ func (g *Grid) DelOut(f string) bool {
 
 	go func() {
 		close(c)
-		delete(g.OutFnChannel, f)
 	}()
 
 	delete(g.OutChannels, f)
@@ -87,7 +108,7 @@ func (g *Grid) DelOut(f string) bool {
 
 //delOut - deletes and runs a go closure to close the channel in the incoming list
 func (g *Grid) DelIn(f string) bool {
-	c, _ := g.In(f)
+	c := g.In(f)
 
 	if c == nil {
 		return false
@@ -95,7 +116,6 @@ func (g *Grid) DelIn(f string) bool {
 
 	go func() {
 		close(c)
-		delete(g.InFnChannel, f)
 	}()
 
 	delete(g.InChannels, f)
@@ -103,24 +123,19 @@ func (g *Grid) DelIn(f string) bool {
 }
 
 //Out - grabs the channel tag by the specified key in the current Grid struct out-channels
-func (g *Grid) Out(f string) (PacketChannel, OperationFn) {
+func (g *Grid) Out(f string) PacketChannel {
 	if c, ok := g.OutChannels[f]; ok {
-		if d, ok := g.OutFnChannel[f]; ok {
-			return c, d
-		}
+		return c
 	}
-	return nil, nil
+	return nil
 }
 
 //In - grabs the channel tag by the specified key in the current Grid struct in-channels
-func (g *Grid) In(f string) (PacketChannel, OperationFn) {
+func (g *Grid) In(f string) PacketChannel {
 	if c, ok := g.InChannels[f]; ok {
-		if d, ok := g.InFnChannel[f]; ok {
-			return c, d
-		}
+		return c
 	}
-
-	return nil, nil
+	return nil
 }
 
 //String - returns the id of this grid
@@ -130,7 +145,7 @@ func (g *Grid) String() string {
 
 //NewGrid - constructor method for creating new grid struct with a function passed in for modds
 func NewGrid(s string) *Grid {
-	g := &Grid{s, make(PacketMap), make(PacketMap), make(PacketMapOperation), make(PacketMapOperation)}
+	g := &Grid{s, make(PacketMap), make(PacketMap)}
 	return g
 }
 
