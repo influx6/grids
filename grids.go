@@ -44,7 +44,8 @@ type Grid struct {
 	OutChannelRoller PacketMapRoller
 }
 
-func (g *Grid) InSend(id string, c interface{}) {
+//InSend sends data in functional style into a in-channel of the grid
+func (g *Grid) InSend(id string, f interface{}) {
 	c := g.In(id)
 
 	if c == nil {
@@ -52,12 +53,13 @@ func (g *Grid) InSend(id string, c interface{}) {
 	}
 
 	go func() {
-		c <- c
+		c <- f
 	}()
 
 }
 
-func (g *Grid) OutSend(id string, c interface{}) {
+//OutSend sends data in functional style into a out-channel of the grid
+func (g *Grid) OutSend(id string, f interface{}) {
 	c := g.Out(id)
 
 	if c == nil {
@@ -65,7 +67,7 @@ func (g *Grid) OutSend(id string, c interface{}) {
 	}
 
 	go func() {
-		c <- c
+		c <- f
 	}()
 
 }
@@ -115,15 +117,15 @@ func (g *Grid) OutBind(id string, c PacketChannel) *evroll.Roller {
 }
 
 //MutOutStream creates an ev.Roller extension of the in-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
-func (g *Grid) MuxInStream(id String) *evroll.Roller {
+func (g *Grid) MuxInStream(id string) *evroll.Roller {
 	d := g.InStream(id)
 
-	if d == null {
+	if d == nil {
 		return nil
 	}
 
 	ev := evroll.NewRoller()
-	did.End(func(f interface{}, next func(i interface{})) {
+	ev.End(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
 	})
@@ -132,15 +134,15 @@ func (g *Grid) MuxInStream(id String) *evroll.Roller {
 }
 
 //MutOutStream creates an ev.Roller extension of the out-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
-func (g *Grid) MuxOutStream(id String) *evroll.Roller {
+func (g *Grid) MuxOutStream(id string) *evroll.Roller {
 	d := g.OutStream(id)
 
-	if d == null {
+	if d == nil {
 		return nil
 	}
 
 	ev := evroll.NewRoller()
-	did.End(func(f interface{}, next func(i interface{})) {
+	ev.End(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
 	})
