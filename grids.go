@@ -98,31 +98,40 @@ func (g *Grid) Unwait() {
 //InSend sends data in functional style into a in-channel of the grid
 func (g *Grid) InSend(id string, f *GridPacket) {
 	c := g.In(id)
-	g.Block()
-
-	if c == nil {
-		return
-	}
 
 	go func() {
-		c <- f
-		defer g.Unwait()
-	}()
 
+		g.Block()
+
+		if c == nil {
+			return
+		}
+
+		go func() {
+			c <- f
+			defer g.Unwait()
+		}()
+
+	}()
 }
 
 //OutSend sends data in functional style into a out-channel of the grid
 func (g *Grid) OutSend(id string, f *GridPacket) {
 	c := g.Out(id)
-	g.Block()
-
-	if c == nil {
-		return
-	}
 
 	go func() {
-		c <- f
-		defer g.Unwait()
+
+		g.Block()
+
+		if c == nil {
+			return
+		}
+
+		go func() {
+			c <- f
+			defer g.Unwait()
+		}()
+
 	}()
 }
 
