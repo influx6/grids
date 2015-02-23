@@ -10,6 +10,7 @@ import (
 	// "fmt"
 	"github.com/influx6/evroll"
 	"github.com/influx6/immute"
+	"sync"
 )
 
 //Packet Are a combination of body map and a sequence list
@@ -23,8 +24,9 @@ type GridPacket struct {
 type PacketChannel chan *GridPacket
 type PacketMap map[string]PacketChannel
 type PacketMapRoller map[string]*evroll.Roller
+type GridMap map[interface{}]interface{}
 
-func (g *GridPacket) Freeze(i interface{}) {
+func (g *GridPacket) Freeze() {
 	g.frozen = true
 }
 
@@ -65,6 +67,9 @@ type GridInterface interface {
 	OutBnd(f string, c PacketChannel) evroll.Roller
 	OutSend(f string)
 	InSend(f string)
+	Block()
+	Wait()
+	Unwait()
 }
 
 //Grid struct is the real struct container for fbp blocks
@@ -74,11 +79,26 @@ type Grid struct {
 	OutChannels      PacketMap
 	InChannelRoller  PacketMapRoller
 	OutChannelRoller PacketMapRoller
+	Waitor           *sync.WaitGroup
+}
+
+//Wait boots up the Grid Workgroup to block and allow go routines to flow
+func (g *Grid) Block() {
+	g.Waitor.Add(1)
+}
+
+func (g *Grid) Wait() {
+	g.Waitor.Wait()
+}
+
+func (g *Grid) Unwait() {
+	defer g.Waitor.Done()
 }
 
 //InSend sends data in functional style into a in-channel of the grid
 func (g *Grid) InSend(id string, f *GridPacket) {
 	c := g.In(id)
+	g.Block()
 
 	if c == nil {
 		return
@@ -86,6 +106,7 @@ func (g *Grid) InSend(id string, f *GridPacket) {
 
 	go func() {
 		c <- f
+		defer g.Unwait()
 	}()
 
 }
@@ -93,6 +114,7 @@ func (g *Grid) InSend(id string, f *GridPacket) {
 //OutSend sends data in functional style into a out-channel of the grid
 func (g *Grid) OutSend(id string, f *GridPacket) {
 	c := g.Out(id)
+	g.Block()
 
 	if c == nil {
 		return
@@ -100,8 +122,8 @@ func (g *Grid) OutSend(id string, f *GridPacket) {
 
 	go func() {
 		c <- f
+		defer g.Unwait()
 	}()
-
 }
 
 //InBind provides a very easy means of functionally binding a channel into the callers grid in channel
@@ -203,10 +225,16 @@ func (g *Grid) InStream(id string) *evroll.Roller {
 	if c := g.In(id); c != nil {
 
 		ev := evroll.NewRoller()
+		ev.Or(func(_ interface{}) {
+			defer g.Unwait()
+		})
 
 		go func() {
+			g.Block()
 			for d := range c {
+				// g.Block()
 				ev.RevMunch(d)
+				// defer g.Unwait()
 			}
 		}()
 
@@ -227,11 +255,20 @@ func (g *Grid) OutStream(id string) *evroll.Roller {
 	if c := g.Out(id); c != nil {
 
 		ev := evroll.NewRoller()
+		ev.Or(func(_ interface{}) {
+			defer g.Unwait()
+		})
+
+		// g.Block()
 
 		go func() {
+			g.Block()
 			for d := range c {
+				// g.Block()
 				ev.RevMunch(d)
+				// defer g.Unwait()
 			}
+			// defer g.UnWait()
 		}()
 
 		g.OutChannelRoller[id] = ev
@@ -314,6 +351,6 @@ func (g *Grid) String() string {
 
 //NewGrid - constructor method for creating new grid struct with a function passed in for modds
 func NewGrid(s string) *Grid {
-	g := &Grid{s, make(PacketMap), make(PacketMap), make(PacketMapRoller), make(PacketMapRoller)}
+	g := &Grid{s, make(PacketMap), make(PacketMap), make(PacketMapRoller), make(PacketMapRoller), new(sync.WaitGroup)}
 	return g
 }
