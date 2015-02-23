@@ -26,6 +26,10 @@ type PacketMap map[string]PacketChannel
 type PacketMapRoller map[string]*evroll.Roller
 type GridMap map[interface{}]interface{}
 
+func (g *GridPacket) Obj() interface{} {
+	return g.Packet.Obj()
+}
+
 func (g *GridPacket) Freeze() {
 	g.frozen = true
 }
@@ -99,13 +103,13 @@ func (g *Grid) Unwait() {
 func (g *Grid) InSend(id string, f *GridPacket) {
 	c := g.In(id)
 
+	if c == nil {
+		return
+	}
+
 	go func() {
 
 		g.Block()
-
-		if c == nil {
-			return
-		}
 
 		go func() {
 			c <- f
@@ -119,13 +123,13 @@ func (g *Grid) InSend(id string, f *GridPacket) {
 func (g *Grid) OutSend(id string, f *GridPacket) {
 	c := g.Out(id)
 
+	if c == nil {
+		return
+	}
+
 	go func() {
 
 		g.Block()
-
-		if c == nil {
-			return
-		}
 
 		go func() {
 			c <- f
