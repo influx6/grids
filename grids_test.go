@@ -8,29 +8,29 @@ func TestGridsNew(t *testing.T) {
 
 	g := NewGrid("servo.io")
 
-	g.NewIn("pull", func(i interface{}, p PacketChannel) {})
-	g.NewOut("push", func(i interface{}, p PacketChannel) {})
+	g.NewIn("pull")
+	g.NewOut("push")
 
-	if _, _, ok := g.Out("push"); !ok {
-		t.Fatalf("no channel called `push` in grid", ok, g)
+	if k := g.Out("push"); k == nil {
+		t.Fatalf("no channel called `push` in grid", k, g)
 	}
 
-	if _, _, ok := g.In("pull"); !ok {
+	if ok := g.In("pull"); ok == nil {
 		t.Fatalf("no channel called `pull` in grid", ok, g)
 	}
 
-	if _, _, ok := g.In("push"); ok {
+	if ok := g.In("push"); ok != nil {
 		t.Fatalf("theres a in-channel called `push` in grid", ok, g)
 	}
 
 	g.DelIn("pull")
 	g.DelOut("push")
 
-	if _, _, ok := g.Out("push"); ok {
+	if ok := g.Out("push"); ok != nil {
 		t.Fatalf("channel called `push` in grid not deleted", ok, g)
 	}
 
-	if _, _, ok := g.In("pull"); ok {
+	if ok := g.In("pull"); ok != nil {
 		t.Fatalf("channel called `pull` in grid not deleted", ok, g)
 	}
 

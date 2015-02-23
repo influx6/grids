@@ -7,14 +7,47 @@
 package grids
 
 import (
+	// "fmt"
 	"github.com/influx6/evroll"
+	"github.com/influx6/immute"
 )
 
+//Packet Are a combination of body map and a sequence list
+type GridPacket struct {
+	Body   map[interface{}]interface{}
+	Packet *immute.Sequence
+	frozen bool
+}
+
 //Packet The packet structor to be sent along in every channel
-type Iv interface{}
-type PacketChannel chan interface{}
+type PacketChannel chan *GridPacket
 type PacketMap map[string]PacketChannel
 type PacketMapRoller map[string]*evroll.Roller
+
+func (g *GridPacket) Freeze(i interface{}) {
+	g.frozen = true
+}
+
+func (g *GridPacket) Offload(fn func(i interface{})) {
+	g.Packet.Each(func(i interface{}, f interface{}) interface{} {
+		fn(i)
+		return nil
+	}, func(c int, f interface{}) {})
+}
+
+func (g *GridPacket) Push(i interface{}) {
+	if g.frozen {
+		return
+	}
+
+	g.Packet.Add(i, nil)
+}
+
+func CreateGridPacket(m map[interface{}]interface{}) *GridPacket {
+	pack := make([]interface{}, 0)
+	seq := immute.CreateList(pack)
+	return &GridPacket{m, seq, false}
+}
 
 //GridInterface is the interface that defines the method mainly used by Grids
 type GridInterface interface {
@@ -44,7 +77,7 @@ type Grid struct {
 }
 
 //InSend sends data in functional style into a in-channel of the grid
-func (g *Grid) InSend(id string, f interface{}) {
+func (g *Grid) InSend(id string, f *GridPacket) {
 	c := g.In(id)
 
 	if c == nil {
@@ -58,7 +91,7 @@ func (g *Grid) InSend(id string, f interface{}) {
 }
 
 //OutSend sends data in functional style into a out-channel of the grid
-func (g *Grid) OutSend(id string, f interface{}) {
+func (g *Grid) OutSend(id string, f *GridPacket) {
 	c := g.Out(id)
 
 	if c == nil {
@@ -84,8 +117,14 @@ func (g *Grid) InBind(id string, c PacketChannel) *evroll.Roller {
 	}
 
 	did.End(func(f interface{}, next func(i interface{})) {
+		fr, ok := f.(*GridPacket)
+
+		if !ok {
+			return
+		}
+
 		go func() {
-			c <- f
+			c <- fr
 		}()
 		next(nil)
 	})
@@ -106,8 +145,13 @@ func (g *Grid) OutBind(id string, c PacketChannel) *evroll.Roller {
 	}
 
 	did.End(func(f interface{}, next func(i interface{})) {
+		fr, ok := f.(*GridPacket)
+
+		if !ok {
+			return
+		}
 		go func() {
-			c <- f
+			c <- fr
 		}()
 		next(nil)
 	})
