@@ -7,10 +7,17 @@
 package grids
 
 import (
-	// "fmt"
+	/* "fmt" */
 	"github.com/influx6/evroll"
 	"github.com/influx6/immute"
 )
+
+//Packet The packet structor to be sent along in every channel
+// type PacketChannel chan *GridPacket
+// type PacketMap map[string]PacketChannel
+type Channel *evroll.Roller
+type PacketMapRoller map[string]*evroll.Roller
+type GridMap map[interface{}]interface{}
 
 //Packet Are a combination of body map and a sequence list
 type GridPacket struct {
@@ -19,11 +26,54 @@ type GridPacket struct {
 	frozen bool
 }
 
-//Packet The packet structor to be sent along in every channel
-// type PacketChannel chan *GridPacket
-// type PacketMap map[string]PacketChannel
-type PacketMapRoller map[string]*evroll.Roller
-type GridMap map[interface{}]interface{}
+//GridInterface is the interface that defines the method mainly used by Grids
+type GridInterface interface {
+	NewIn(string)
+	NewOut(string)
+	In(string)
+	Out(string)
+	DelIn(string)
+	DelOut(string)
+	MuxIn(string) evroll.Roller
+	MuxOut(string) evroll.Roller
+	InBind(string, evroll.Roller) evroll.Roller
+	OutBnd(string, evroll.Roller) evroll.Roller
+	OutSend(f string)
+	InSend(f string)
+	AndIn(string, func(*GridPacket))
+	AndOut(string, func(*GridPacket))
+	OrIn(string func(*GridPacket))
+	OrOut(string, func(*GridPacket))
+}
+
+//Grid struct is the real struct container for fbp blocks
+type Grid struct {
+	Id          string
+	InChannels  PacketMapRoller
+	OutChannels PacketMapRoller
+	Config      map[interface{}]interface{}
+	Plugs       map[string]interface{}
+}
+
+//NewGrid - constructor method for creating new grid struct with a function passed in for modds
+func NewGrid(s string) *Grid {
+	g := &Grid{s, make(PacketMapRoller), make(PacketMapRoller), make(map[interface{}]interface{}), make(map[string]interface{})}
+	return g
+}
+
+func CreateGridPacket(m map[interface{}]interface{}) *GridPacket {
+	pack := make([]interface{}, 0)
+	seq := immute.CreateList(pack)
+	return &GridPacket{m, seq, false}
+}
+
+func CreateGridMap() GridMap {
+	return make(GridMap)
+}
+
+func CreatePacket() *GridPacket {
+	return CreateGridPacket(CreateGridMap())
+}
 
 func (g *GridPacket) Obj() interface{} {
 	return g.Packet.Obj()
@@ -48,33 +98,91 @@ func (g *GridPacket) Push(i interface{}) {
 	g.Packet.Add(i, nil)
 }
 
-func CreateGridPacket(m map[interface{}]interface{}) *GridPacket {
-	pack := make([]interface{}, 0)
-	seq := immute.CreateList(pack)
-	return &GridPacket{m, seq, false}
+//AndIn calls a function  on every time a packet comes into the selected in channel
+func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
+	g.AndIn(id, func(p *GridPacket, next func(s interface{})) {
+		channelFunc(p)
+		next(nil)
+	})
 }
 
-//GridInterface is the interface that defines the method mainly used by Grids
-type GridInterface interface {
-	NewIn(f string)
-	NewOut(f string)
-	In(f string)
-	Out(f string)
-	DelIn(f string)
-	DelOut(f string)
-	MuxIn(f string) evroll.Roller
-	MuxOut(f string) evroll.Roller
-	InBind(f string, c evroll.Roller) evroll.Roller
-	OutBnd(f string, c evroll.Roller) evroll.Roller
-	OutSend(f string)
-	InSend(f string)
+//AndOut calls a function on every time a packet comes into the selected out channel
+func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
+	g.AndOut(id, func(p *GridPacket, next func(s interface{})) {
+		channelFunc(p)
+		next(nil)
+	})
 }
 
-//Grid struct is the real struct container for fbp blocks
-type Grid struct {
-	Id          string
-	InChannels  PacketMapRoller
-	OutChannels PacketMapRoller
+//AndIn calls a function on every time a packet comes into the selected in channel
+func (g *Grid) AndIn(id string, channelFunc func(r *GridPacket, s func(i interface{}))) {
+	c := g.In(id)
+
+	if c == nil {
+		return
+	}
+
+	c.End(func(packet interface{}, next func(s interface{})) {
+		fr, err := packet.(*GridPacket)
+
+		if !err {
+			return
+		}
+
+		channelFunc(fr, next)
+	})
+}
+
+//AndOut calls a function on every time a packet comes into the selected out channel
+func (g *Grid) AndOut(id string, channelFunc func(r *GridPacket, s func(i interface{}))) {
+	c := g.Out(id)
+
+	if c == nil {
+		return
+	}
+
+	c.End(func(packet interface{}, next func(s interface{})) {
+		fr, err := packet.(*GridPacket)
+		if !err {
+			return
+		}
+
+		channelFunc(fr, next)
+	})
+}
+
+//InBind connects a channel into the in-channel
+func (g *Grid) InBind(id string, f *evroll.Roller) {
+	c := g.In(id)
+
+	if c == nil {
+		return
+	}
+
+	c.Or(func(i interface{}) {
+		// fr, err := packet.(*grids.GridPacket)
+		// if !err {
+		// 	return
+		// }
+		f.RevMunch(i)
+	})
+}
+
+//OutBind connects a channel into the out-channel
+func (g *Grid) OutBind(id string, f *evroll.Roller) {
+	c := g.Out(id)
+
+	if c == nil {
+		return
+	}
+
+	c.Or(func(i interface{}) {
+		// fr, err := packet.(*grids.GridPacket)
+		// if !err {
+		// 	return
+		// }
+		f.RevMunch(i)
+	})
 }
 
 //InSend sends data in functional style into a in-channel of the grid
@@ -200,10 +308,4 @@ func (g *Grid) DelIn(f string) bool {
 //String - returns the id of this grid
 func (g *Grid) String() string {
 	return g.Id
-}
-
-//NewGrid - constructor method for creating new grid struct with a function passed in for modds
-func NewGrid(s string) *Grid {
-	g := &Grid{s, make(PacketMapRoller), make(PacketMapRoller)}
-	return g
 }
