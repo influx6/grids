@@ -122,7 +122,7 @@ func (g *Grid) AndIn(id string, channelFunc func(r *GridPacket, s func(i interfa
 		return
 	}
 
-	c.End(func(packet interface{}, next func(s interface{})) {
+	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
 
 		if !err {
@@ -141,7 +141,7 @@ func (g *Grid) AndOut(id string, channelFunc func(r *GridPacket, s func(i interf
 		return
 	}
 
-	c.End(func(packet interface{}, next func(s interface{})) {
+	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
 		if !err {
 			return
@@ -159,7 +159,7 @@ func (g *Grid) InBind(id string, f *evroll.Roller) {
 		return
 	}
 
-	c.Or(func(i interface{}) {
+	c.Receive(func(i interface{}) {
 		// fr, err := packet.(*grids.GridPacket)
 		// if !err {
 		// 	return
@@ -176,7 +176,7 @@ func (g *Grid) OutBind(id string, f *evroll.Roller) {
 		return
 	}
 
-	c.Or(func(i interface{}) {
+	c.Receive(func(i interface{}) {
 		// fr, err := packet.(*grids.GridPacket)
 		// if !err {
 		// 	return
@@ -216,7 +216,7 @@ func (g *Grid) MuxIn(id string) *evroll.Roller {
 	}
 
 	ev := evroll.NewRoller()
-	ev.End(func(f interface{}, next func(i interface{})) {
+	ev.Decide(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
 	})
@@ -233,7 +233,7 @@ func (g *Grid) MuxOut(id string) *evroll.Roller {
 	}
 
 	ev := evroll.NewRoller()
-	ev.End(func(f interface{}, next func(i interface{})) {
+	ev.Decide(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
 	})
