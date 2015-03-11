@@ -1,4 +1,4 @@
-#Grids
+#Grid
     Grids is the composable functionally golang coding style of the graphical FBP paradigm, its about providing something functional and less graphically 
     geared.
     
@@ -165,9 +165,13 @@
         `
             echo := grids.NewGrid(“io”)
 
+            abc := grids.CreatePacket();
+            abc.Body[“word”] = “abc”
+            abc.Packet.Add(“thunder”,nil)
+
             echo.NewOut(“words”)
         
-            echo.OutSend(“words”,“abc...”)
+            echo.OutSend(“words”,abc)
         
         `
 
@@ -179,7 +183,11 @@
 
             echo.NewIn(“words”)
         
-            echo.InSend(“words”,“abc...”)
+            abc := grids.CreatePacket();
+            abc.Body[“word”] = “abc”
+            abc.Packet.Add(“thunder”,nil)
+
+            echo.InSend(“words”,abc)
         
         `
 
