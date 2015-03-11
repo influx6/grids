@@ -18,6 +18,8 @@ import (
 type Channel *evroll.Roller
 type PacketMapRoller map[string]*evroll.Roller
 type GridMap map[interface{}]interface{}
+type AndCaller func(packet *GridPacket, next func(newVal *GridPacket))
+type OrCaller func(packet *GridPacket)
 
 //Packet Are a combination of body map and a sequence list
 type GridPacket struct {
@@ -37,13 +39,13 @@ type GridInterface interface {
 	MuxIn(string) evroll.Roller
 	MuxOut(string) evroll.Roller
 	InBind(string, evroll.Roller) evroll.Roller
-	OutBnd(string, evroll.Roller) evroll.Roller
+	OutBind(string, evroll.Roller) evroll.Roller
 	OutSend(f string)
 	InSend(f string)
-	AndIn(string, func(*GridPacket))
-	AndOut(string, func(*GridPacket))
-	OrIn(string func(*GridPacket))
-	OrOut(string, func(*GridPacket))
+	AndIn(string, AndCaller)
+	AndOut(string, AndCaller)
+	OrIn(string, OrCaller)
+	OrOut(string, OrCaller)
 }
 
 //Grid struct is the real struct container for fbp blocks
@@ -115,7 +117,7 @@ func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
 }
 
 //AndIn calls a function on every time a packet comes into the selected in channel
-func (g *Grid) AndIn(id string, channelFunc func(r *GridPacket, s func(i interface{}))) {
+func (g *Grid) AndIn(id string, channelFunc AndCaller) {
 	c := g.In(id)
 
 	if c == nil {
@@ -124,17 +126,20 @@ func (g *Grid) AndIn(id string, channelFunc func(r *GridPacket, s func(i interfa
 
 	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
+		rnNext := func(p *GridPacket) {
+			next(p)
+		}
 
 		if !err {
 			return
 		}
 
-		channelFunc(fr, next)
+		channelFunc(fr, rnNext)
 	})
 }
 
 //AndOut calls a function on every time a packet comes into the selected out channel
-func (g *Grid) AndOut(id string, channelFunc func(r *GridPacket, s func(i interface{}))) {
+func (g *Grid) AndOut(id string, channelFunc AndCaller) {
 	c := g.Out(id)
 
 	if c == nil {
@@ -143,11 +148,15 @@ func (g *Grid) AndOut(id string, channelFunc func(r *GridPacket, s func(i interf
 
 	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
+		rnNext := func(p *GridPacket) {
+			next(p)
+		}
+
 		if !err {
 			return
 		}
 
-		channelFunc(fr, next)
+		channelFunc(fr, rnNext)
 	})
 }
 
