@@ -9,6 +9,7 @@ package grids
 import (
 	/* "fmt" */
 	"github.com/influx6/evroll"
+	"github.com/influx6/goutils"
 	"github.com/influx6/immute"
 )
 
@@ -23,7 +24,7 @@ type OrCaller func(packet *GridPacket)
 
 //Packet Are a combination of body map and a sequence list
 type GridPacket struct {
-	Body   map[interface{}]interface{}
+	*goutils.Map
 	Packet *immute.Sequence
 	frozen bool
 }
@@ -63,18 +64,10 @@ func NewGrid(s string) *Grid {
 	return g
 }
 
-func CreateGridPacket(m map[interface{}]interface{}) *GridPacket {
-	pack := make([]interface{}, 0)
-	seq := immute.CreateList(pack)
-	return &GridPacket{m, seq, false}
-}
-
-func CreateGridMap() GridMap {
-	return make(GridMap)
-}
-
-func CreatePacket() *GridPacket {
-	return CreateGridPacket(CreateGridMap())
+func NewPacket() *GridPacket {
+	pack := goutils.NewMap()
+	seq := immute.CreateList(make([]interface{}, 0))
+	return &GridPacket{pack, seq, false}
 }
 
 func (g *GridPacket) Obj() interface{} {
@@ -102,7 +95,7 @@ func (g *GridPacket) Push(i interface{}) {
 
 //AndIn calls a function  on every time a packet comes into the selected in channel
 func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
-	g.AndIn(id, func(p *GridPacket, next func(s interface{})) {
+	g.AndIn(id, func(p *GridPacket, next func(s *GridPacket)) {
 		channelFunc(p)
 		next(nil)
 	})
@@ -110,7 +103,7 @@ func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
 
 //AndOut calls a function on every time a packet comes into the selected out channel
 func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
-	g.AndOut(id, func(p *GridPacket, next func(s interface{})) {
+	g.AndIn(id, func(p *GridPacket, next func(s *GridPacket)) {
 		channelFunc(p)
 		next(nil)
 	})

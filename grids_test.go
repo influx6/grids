@@ -39,3 +39,12 @@ func TestGridsNew(t *testing.T) {
 	}
 
 }
+
+func TestGridPacket(t *testing.T) {
+	p := NewPacket()
+	p.Set("name", "packet")
+
+	if !p.Has("name") {
+		t.Fatalf("cant use Map.Has feature on packet", p)
+	}
+}
