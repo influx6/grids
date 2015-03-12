@@ -70,6 +70,10 @@ func NewPacket() *GridPacket {
 	return &GridPacket{pack, seq, false}
 }
 
+func (g *GridPacket) Seq() *immute.Sequence {
+	return g.Packet.Seq()
+}
+
 func (g *GridPacket) Obj() interface{} {
 	return g.Packet.Obj()
 }
