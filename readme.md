@@ -14,10 +14,30 @@ Grids is the composable functionally golang coding style of the graphical FBP pa
  In Grids the data passed along are called GridPackets and contain a <header><sequence> structure, where the <header>
 is a map that can contains meta details and the sequence can contain data streams or just the data it carries if that is the desire of the user has this is not enforced.
 
-   -   NewPacket() *GridPacket 
-        This is a helper function that creates a new GridPacket 
+- **NewPacket() *GridPacket** 
+    This is a helper function that creates a new GridPacket 
+        
+        req := NewPacket()
+        //add some <header> data
+        req.Set("name","box")
+        req.Set("url","http://box.com")
+        
+        //lets add some <sequence> data for this packet to carry
 
- Underneath grids is the use of [Evroll] Rollers as internal channels but the FBP principles are basically similar and gears primarily to golang style of program writing of structs and composition.
+        req.Push(3);
+        req.Push([]byte("someday..."));
+        req.Push("solar");
+        
+        .... then send it off into a channel
+        //send into a out channel
+        Grid.OutSend("channenl_name",req)
+        
+        or
+        
+        //send into a in channel
+        Grid.InSend("channel_name",req)
+     
+Underneath grids is the use of [Evroll] Rollers as internal channels but the FBP principles are basically similar and gears primarily to golang style of program writing of structs and composition.
   
  - **Grids.NewGrid(title string) *Grid**
         This returns a new grid struct pointer and allows that allows the localization of behaviour onto the grid instance
