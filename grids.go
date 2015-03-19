@@ -16,8 +16,8 @@ import (
 //Packet The packet structor to be sent along in every channel
 // type PacketChannel chan *GridPacket
 // type PacketMap map[string]PacketChannel
-type Channel *evroll.Roller
-type PacketMapRoller map[string]*evroll.Roller
+type Channel *evroll.Streams
+type PacketMapRoller map[string]*evroll.Streams
 type GridMap map[interface{}]interface{}
 type AndCaller func(packet *GridPacket, next func(newVal *GridPacket))
 type OrCaller func(packet *GridPacket)
@@ -37,10 +37,10 @@ type GridInterface interface {
 	Out(string)
 	DelIn(string)
 	DelOut(string)
-	MuxIn(string) evroll.Roller
-	MuxOut(string) evroll.Roller
-	InBind(string, evroll.Roller) evroll.Roller
-	OutBind(string, evroll.Roller) evroll.Roller
+	MuxIn(string) evroll.Streams
+	MuxOut(string) evroll.Streams
+	InBind(string, evroll.Streams) evroll.Streams
+	OutBind(string, evroll.Roller) evroll.Streams
 	OutSend(f string)
 	InSend(f string)
 	AndIn(string, AndCaller)
@@ -107,7 +107,7 @@ func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
 
 //AndOut calls a function on every time a packet comes into the selected out channel
 func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
-	g.AndIn(id, func(p *GridPacket, next func(s *GridPacket)) {
+	g.AndOut(id, func(p *GridPacket, next func(s *GridPacket)) {
 		channelFunc(p)
 		next(nil)
 	})
@@ -123,15 +123,19 @@ func (g *Grid) AndIn(id string, channelFunc AndCaller) {
 
 	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
-		rnNext := func(p *GridPacket) {
-			next(p)
-		}
 
 		if !err {
 			return
 		}
 
-		channelFunc(fr, rnNext)
+		channelFunc(fr, func(p *GridPacket) {
+			if p == nil {
+				next(nil)
+				return
+			}
+
+			next(p)
+		})
 	})
 }
 
@@ -145,20 +149,23 @@ func (g *Grid) AndOut(id string, channelFunc AndCaller) {
 
 	c.Decide(func(packet interface{}, next func(s interface{})) {
 		fr, err := packet.(*GridPacket)
-		rnNext := func(p *GridPacket) {
-			next(p)
-		}
-
 		if !err {
 			return
 		}
 
-		channelFunc(fr, rnNext)
+		channelFunc(fr, func(p *GridPacket) {
+			if p == nil {
+				next(nil)
+				return
+			}
+
+			next(p)
+		})
 	})
 }
 
 //InBind connects a channel into the in-channel
-func (g *Grid) InBind(id string, f *evroll.Roller) {
+func (g *Grid) InBind(id string, f *evroll.Streams) {
 	c := g.In(id)
 
 	if c == nil {
@@ -170,12 +177,12 @@ func (g *Grid) InBind(id string, f *evroll.Roller) {
 		// if !err {
 		// 	return
 		// }
-		f.RevMunch(i)
+		f.Send(i)
 	})
 }
 
 //OutBind connects a channel into the out-channel
-func (g *Grid) OutBind(id string, f *evroll.Roller) {
+func (g *Grid) OutBind(id string, f *evroll.Streams) {
 	c := g.Out(id)
 
 	if c == nil {
@@ -187,7 +194,7 @@ func (g *Grid) OutBind(id string, f *evroll.Roller) {
 		// if !err {
 		// 	return
 		// }
-		f.RevMunch(i)
+		f.Send(i)
 	})
 }
 
@@ -195,50 +202,50 @@ func (g *Grid) OutBind(id string, f *evroll.Roller) {
 func (g *Grid) InSend(id string, f *GridPacket) {
 	c := g.In(id)
 
-	if c == nil {
+	if c == nil || f == nil {
 		return
 	}
 
-	c.RevMunch(f)
+	c.Send(f)
 }
 
 //OutSend sends data in functional style into a out-channel of the grid
 func (g *Grid) OutSend(id string, f *GridPacket) {
 	c := g.Out(id)
 
-	if c == nil {
+	if c == nil || f == nil {
 		return
 	}
 
-	c.RevMunch(f)
+	c.Send(f)
 }
 
-//MutIn creates an ev.Roller extension of the in-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
-func (g *Grid) MuxIn(id string) *evroll.Roller {
+//MuxIn creates an ev.Roller extension of the in-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
+func (g *Grid) MuxIn(id string) *evroll.Streams {
 	d := g.In(id)
 
 	if d == nil {
 		return nil
 	}
 
-	ev := evroll.NewRoller()
+	ev := evroll.NewStream(true,false)
 	ev.Decide(func(f interface{}, next func(i interface{})) {
-		ev.RevMunch(f)
+		ev.Send(f)
 		next(nil)
 	})
 
 	return ev
 }
 
-//MutOut creates an ev.Roller extension of the out-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
-func (g *Grid) MuxOut(id string) *evroll.Roller {
+//MuxOut creates an ev.Roller extension of the out-channel single,cache ev.Roller to you can mutate of that data stream to create new interesting values for other grids to use,but there are no quick functional style as you will manual send the data into the channel yourself
+func (g *Grid) MuxOut(id string) *evroll.Streams {
 	d := g.Out(id)
 
 	if d == nil {
 		return nil
 	}
 
-	ev := evroll.NewRoller()
+	ev := evroll.NewStream(true,false)
 	ev.Decide(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
@@ -249,7 +256,7 @@ func (g *Grid) MuxOut(id string) *evroll.Roller {
 
 //In listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
 
-func (g *Grid) In(id string) *evroll.Roller {
+func (g *Grid) In(id string) *evroll.Streams {
 	if r, ok := g.InChannels[id]; ok {
 		return r
 	}
@@ -259,7 +266,7 @@ func (g *Grid) In(id string) *evroll.Roller {
 
 //Out listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
 
-func (g *Grid) Out(id string) *evroll.Roller {
+func (g *Grid) Out(id string) *evroll.Streams {
 	if r, ok := g.OutChannels[id]; ok {
 		return r
 	}
@@ -273,7 +280,7 @@ func (g *Grid) NewIn(id string) {
 		return
 	}
 
-	ev := evroll.NewRoller()
+	ev := evroll.NewStream(true,false)
 
 	g.InChannels[id] = ev
 
@@ -285,7 +292,7 @@ func (g *Grid) NewOut(id string) {
 		return
 	}
 
-	ev := evroll.NewRoller()
+	ev := evroll.NewStream(true,false)
 
 	g.OutChannels[id] = ev
 
