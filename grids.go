@@ -22,6 +22,12 @@ type AndCaller func(packet *GridPacket, next func(newVal *GridPacket))
 //OrCaller represent the middleware pass next auto caller func
 type OrCaller func(packet *GridPacket)
 
+//BindHandler represents a binding to allow multiple binders to a grid
+type BindHandler func(port string, sets ...GridInterface)
+
+//GridChannel represents a Evroll.Streams
+type GridChannel *evroll.Streams
+
 //GridPacket Are a combination of body map and a sequence list
 type GridPacket struct {
 	*goutils.Map
@@ -47,6 +53,78 @@ type GridInterface interface {
 	AndOut(string, func(*GridPacket, func(*GridPacket)))
 	OrIn(string, func(*GridPacket))
 	OrOut(string, func(*GridPacket))
+}
+
+//GridBindIn binds all supplied GridInterface and port pair to the given port and GridInterface
+func GridBindIn(port string, root GridInterface) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range sets {
+			channel := elem.In(port)
+			if channel != nil {
+				root.InBind(port, channel)
+			}
+		}
+	}
+}
+
+//GridBindOut binds all supplied GridInterface and port to the specific grid
+func GridBindOut(port string, root GridInterface) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range sets {
+			channel := elem.Out(port)
+			if channel != nil {
+				root.OutBind(port, channel)
+			}
+		}
+	}
+}
+
+//GridBindInOut binds all supplied GridInterface and port pair
+//to the out channel of the given GridInterface
+func GridBindInOut(port string, root GridInterface) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range sets {
+			channel := elem.In(port)
+			if channel != nil {
+				root.OutBind(port, channel)
+			}
+		}
+	}
+}
+
+//GridBindOutIn binds all supplied GridInterface and port to the specific grid
+//in channel
+func GridBindOutIn(port string, root GridInterface) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range sets {
+			channel := elem.Out(port)
+			if channel != nil {
+				root.InBind(port, channel)
+			}
+		}
+	}
+}
+
+//GridJoinOut binds a set of evroll.Streams into a out-channel of GridInterface
+func GridJoinOut(roots ...*evroll.Streams) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range roots {
+			for _, re := range sets {
+				re.OutBind(port, elem)
+			}
+		}
+	}
+}
+
+//GridJoinIn binds a set of evroll.Streams into a in-channel of GridInterface
+func GridJoinIn(roots ...*evroll.Streams) BindHandler {
+	return func(port string, sets ...GridInterface) {
+		for _, elem := range roots {
+			for _, re := range sets {
+				re.InBind(port, elem)
+			}
+		}
+	}
 }
 
 //Grid struct is the real struct container for fbp blocks
