@@ -45,11 +45,11 @@ Grids is the composable functionally golang coding style of the graphical FBP pa
 
       	consoler.InSend("data", packet)
       }
-      
+
   ```
 
 - WebServer
-These is taken from the [Webgrid](https://github.com/influx6/webgrid/webgrid_test.go) project
+These is taken from the [Webgrid](https://github.com/influx6/webgrid/blob/master/webgrid_test.go) project
 
     ```
       package webgrid
