@@ -10,6 +10,87 @@ Grids is the composable functionally golang coding style of the graphical FBP pa
 
       go install github.com/influx6/grids
 
+##Example
+
+- HelloWord
+
+  ```
+      package webgrid
+
+      import (
+      	"fmt"
+        //generally dont use dot imports(pollution bad :) )
+      	. "github.com/influx6/grids"
+      )
+
+      func main() {
+
+      	consoler := NewGrid("consoler")
+      	consoler.NewIn("data")
+
+      	consoler.OrIn("data", func(p *GridPacket) {
+      		p.Offload(func(elem interface{}) {
+      			fmt.Printf("%s head says: %d \n", p.Get("Name"), elem)
+      		})
+      	})
+
+      	packet := NewPacket()
+      	//can save data as header in the packet
+      	packet.Set("Name", "Consoler.Data")
+      	//add some stream data
+
+      	packet.Push(1)
+      	packet.Push(200)
+      	packet.Push(3000)
+
+      	consoler.InSend("data", packet)
+      }
+      
+  ```
+
+- WebServer
+These is taken from the [Webgrid](https://github.com/influx6/webgrid/webgrid_test.go) project
+
+    ```
+      package webgrid
+
+      import (
+        "testing"
+        "net/http"
+        "log"
+        "time"
+        "github.com/influx6/grids"
+      )
+
+    	var _ interface{}
+
+    	app := NewHttp()
+    	_ = NewHttpConsole(app)
+
+    	assets := NewRoute("/assets", false)
+      reply := NewReply(func (res http.ResponseWriter,req *http.Request,p *grids.GridPacket){
+        // res.WriteStatus(200)
+        res.Write([]byte("Welcome!"))
+      })
+
+    	app.OrOut("res", func (g *grids.GridPacket){
+         if g == nil {
+           t.Fatalf("recieved no packet")
+         }
+      })
+
+      app.OutBind("res",assets.In("req"))
+      assets.OutBind("yes",reply.In("req"))
+
+    	err := http.ListenAndServe("127.0.0.1:3000", app)
+
+    	if err != nil {
+        log.Println("exploding")
+    		panic("server exploded")
+    	}
+
+    ```
+
 ##API
  In Grids the data passed along are called GridPackets and contain a <header><sequence> structure, where the <header>
 is a map that can contains meta details and the sequence can contain data streams or just the data it carries if that is the desire of the user has this is not enforced.
