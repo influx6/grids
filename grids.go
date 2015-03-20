@@ -13,16 +13,16 @@ import (
 	"github.com/influx6/immute"
 )
 
-//Packet The packet structor to be sent along in every channel
-// type PacketChannel chan *GridPacket
-// type PacketMap map[string]PacketChannel
-type Channel *evroll.Streams
+//PacketMapRoller represent the type for the channel maps
 type PacketMapRoller map[string]*evroll.Streams
-type GridMap map[interface{}]interface{}
+
+//AndCaller represent the middleware function with next caller func
 type AndCaller func(packet *GridPacket, next func(newVal *GridPacket))
+
+//OrCaller represent the middleware pass next auto caller func
 type OrCaller func(packet *GridPacket)
 
-//Packet Are a combination of body map and a sequence list
+//GridPacket Are a combination of body map and a sequence list
 type GridPacket struct {
 	*goutils.Map
 	Packet *immute.Sequence
@@ -33,20 +33,20 @@ type GridPacket struct {
 type GridInterface interface {
 	NewIn(string)
 	NewOut(string)
-	In(string)
-	Out(string)
-	DelIn(string)
-	DelOut(string)
-	MuxIn(string) evroll.Streams
-	MuxOut(string) evroll.Streams
-	InBind(string, evroll.Streams) evroll.Streams
-	OutBind(string, evroll.Roller) evroll.Streams
-	OutSend(f string)
-	InSend(f string)
-	AndIn(string, AndCaller)
-	AndOut(string, AndCaller)
-	OrIn(string, OrCaller)
-	OrOut(string, OrCaller)
+	DelIn(string) bool
+	DelOut(string) bool
+	In(string) *evroll.Streams
+	Out(string) *evroll.Streams
+	MuxIn(string) *evroll.Streams
+	MuxOut(string) *evroll.Streams
+	InBind(string, *evroll.Streams)
+	OutBind(string, *evroll.Streams)
+	OutSend(string, *GridPacket)
+	InSend(string, *GridPacket)
+	AndIn(string, func(*GridPacket, func(*GridPacket)))
+	AndOut(string, func(*GridPacket, func(*GridPacket)))
+	OrIn(string, func(*GridPacket))
+	OrOut(string, func(*GridPacket))
 }
 
 //Grid struct is the real struct container for fbp blocks
@@ -56,32 +56,45 @@ type Grid struct {
 	OutChannels PacketMapRoller
 	Config      map[interface{}]interface{}
 	Plugs       map[string]interface{}
+	wrapper     GridInterface
 }
 
 //NewGrid - constructor method for creating new grid struct with a function passed in for modds
 func NewGrid(s string) *Grid {
-	g := &Grid{s, make(PacketMapRoller), make(PacketMapRoller), make(map[interface{}]interface{}), make(map[string]interface{})}
+	g := &Grid{
+		s,
+		make(PacketMapRoller),
+		make(PacketMapRoller),
+		make(map[interface{}]interface{}),
+		make(map[string]interface{}),
+		nil,
+	}
 	return g
 }
 
+//NewPacket creates a new GridPacket
 func NewPacket() *GridPacket {
 	pack := goutils.NewMap()
 	seq := immute.CreateList(make([]interface{}, 0))
 	return &GridPacket{pack, seq, false}
 }
 
+//Seq returns the internal sequence in the packet
 func (g *GridPacket) Seq() *immute.Sequence {
 	return g.Packet.Seq()
 }
 
+//Obj returns the whole sequence of the packet
 func (g *GridPacket) Obj() interface{} {
 	return g.Packet.Obj()
 }
 
+//Freeze stops allowing addition of data into sequence
 func (g *GridPacket) Freeze() {
 	g.frozen = true
 }
 
+//Offload iterates through the sequence and calls the func on each item
 func (g *GridPacket) Offload(fn func(i interface{})) {
 	g.Packet.Each(func(i interface{}, f interface{}) interface{} {
 		fn(i)
@@ -89,6 +102,7 @@ func (g *GridPacket) Offload(fn func(i interface{})) {
 	}, func(c int, f interface{}) {})
 }
 
+//Push adds a data into the packet sequence
 func (g *GridPacket) Push(i interface{}) {
 	if g.frozen {
 		return
@@ -97,7 +111,15 @@ func (g *GridPacket) Push(i interface{}) {
 	g.Packet.Add(i, nil)
 }
 
-//AndIn calls a function  on every time a packet comes into the selected in channel
+//Wrap makes a Grids struct return itself wrapped in a GridInterface
+func (g *Grid) Wrap() GridInterface {
+	if g.wrapper == nil {
+		g.wrapper = GridInterface(g)
+	}
+	return g.wrapper
+}
+
+//OrIn calls a function  on every time a packet comes into the selected in channel
 func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
 	g.AndIn(id, func(p *GridPacket, next func(s *GridPacket)) {
 		channelFunc(p)
@@ -105,7 +127,7 @@ func (g *Grid) OrIn(id string, channelFunc func(r *GridPacket)) {
 	})
 }
 
-//AndOut calls a function on every time a packet comes into the selected out channel
+//OrOut calls a function on every time a packet comes into the selected out channel
 func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
 	g.AndOut(id, func(p *GridPacket, next func(s *GridPacket)) {
 		channelFunc(p)
@@ -114,7 +136,7 @@ func (g *Grid) OrOut(id string, channelFunc func(r *GridPacket)) {
 }
 
 //AndIn calls a function on every time a packet comes into the selected in channel
-func (g *Grid) AndIn(id string, channelFunc AndCaller) {
+func (g *Grid) AndIn(id string, channelFunc func(packet *GridPacket, next func(newVal *GridPacket))) {
 	c := g.In(id)
 
 	if c == nil {
@@ -140,7 +162,7 @@ func (g *Grid) AndIn(id string, channelFunc AndCaller) {
 }
 
 //AndOut calls a function on every time a packet comes into the selected out channel
-func (g *Grid) AndOut(id string, channelFunc AndCaller) {
+func (g *Grid) AndOut(id string, channelFunc func(packet *GridPacket, next func(newVal *GridPacket))) {
 	c := g.Out(id)
 
 	if c == nil {
@@ -228,7 +250,7 @@ func (g *Grid) MuxIn(id string) *evroll.Streams {
 		return nil
 	}
 
-	ev := evroll.NewStream(true,false)
+	ev := evroll.NewStream(true, false)
 	ev.Decide(func(f interface{}, next func(i interface{})) {
 		ev.Send(f)
 		next(nil)
@@ -245,7 +267,7 @@ func (g *Grid) MuxOut(id string) *evroll.Streams {
 		return nil
 	}
 
-	ev := evroll.NewStream(true,false)
+	ev := evroll.NewStream(true, false)
 	ev.Decide(func(f interface{}, next func(i interface{})) {
 		ev.RevMunch(f)
 		next(nil)
@@ -255,7 +277,6 @@ func (g *Grid) MuxOut(id string) *evroll.Streams {
 }
 
 //In listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
-
 func (g *Grid) In(id string) *evroll.Streams {
 	if r, ok := g.InChannels[id]; ok {
 		return r
@@ -265,7 +286,6 @@ func (g *Grid) In(id string) *evroll.Streams {
 }
 
 //Out listens to a particular in channel and collect the data sent into it and sends it into a roller/middleware type of struct
-
 func (g *Grid) Out(id string) *evroll.Streams {
 	if r, ok := g.OutChannels[id]; ok {
 		return r
@@ -274,31 +294,31 @@ func (g *Grid) Out(id string) *evroll.Streams {
 	return nil
 }
 
-//newIn allows the addition of a new channel into the Grid in-comming channel list
+//NewIn allows the addition of a new channel into the Grid in-comming channel list
 func (g *Grid) NewIn(id string) {
 	if _, ok := g.InChannels[id]; ok {
 		return
 	}
 
-	ev := evroll.NewStream(true,false)
+	ev := evroll.NewStream(true, false)
 
 	g.InChannels[id] = ev
 
 }
 
-//newOut allows the addition of a new channel into the Grid out-going channel list
+//NewOut allows the addition of a new channel into the Grid out-going channel list
 func (g *Grid) NewOut(id string) {
 	if _, ok := g.OutChannels[id]; ok {
 		return
 	}
 
-	ev := evroll.NewStream(true,false)
+	ev := evroll.NewStream(true, false)
 
 	g.OutChannels[id] = ev
 
 }
 
-//delOut - deletes and runs a go closure to close the channel in the outgoing list
+//DelOut - deletes and runs a go closure to close the channel in the outgoing list
 func (g *Grid) DelOut(f string) bool {
 	if _, ok := g.OutChannels[f]; ok {
 		delete(g.OutChannels, f)
@@ -308,7 +328,7 @@ func (g *Grid) DelOut(f string) bool {
 	return false
 }
 
-//delOut - deletes and runs a go closure to close the channel in the incoming list
+//DelIn - deletes and runs a go closure to close the channel in the incoming list
 func (g *Grid) DelIn(f string) bool {
 	if _, ok := g.InChannels[f]; ok {
 		delete(g.InChannels, f)
